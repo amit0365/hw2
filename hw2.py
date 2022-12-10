@@ -1,27 +1,12 @@
 import pandas as pd
 import numpy as np
 
-all_stocks=pd.read_csv("sp500_stocks.csv")
-all_stocks['Symbol'].unique()
+all_stocks=pd.read_csv("sp500_stocks.csv");
 
-#likely more than 500 because of index changes
-len(all_stocks['Symbol'].unique())
+sector=pd.read_csv("sp500_companies.csv");
 
-sector=pd.read_csv("sp500_companies.csv")
+all_stocks=all_stocks.merge(sector[['Symbol','Sector']],how='left',on='Symbol');
 
-sector
-
-all_stocks=all_stocks.merge(sector[['Symbol','Sector']],how='left',on='Symbol')
-all_stocks
-
-all_stocks['Sector'].unique()
-
-#we sill have some missing sectors - figure out what to do here
-all_stocks[all_stocks['Sector'].isnull()]['Symbol'].unique()
-
-all_stocks[all_stocks['Symbol']=='GOOG']
-
-# all_stocks.loc[all_stocks['Sector'].isnull(),'Sector']='UNKNOWN'
 
 # YOU MAY NEED TO UPDATE THIS LOGIC
 all_stocks.loc[all_stocks['Symbol']=='CEG','Sector']='Utilities'
@@ -34,18 +19,13 @@ all_stocks.loc[all_stocks['Symbol']=='WBD','Sector']='Communication Services'
 all_stocks.loc[all_stocks['Symbol']=='WTW','Sector']='Financial Services'
 all_stocks.loc[all_stocks['Sector'].isnull(),'Sector']='UNKNOWN'
 
-all_stocks['Sector'].unique()
 
-"""### In order to understand what factors may be driving returns we first need to calcualte returns"""
 
 #calculate return as a log-difference
-all_stocks=all_stocks.sort_values(['Symbol','Date']).reset_index(drop=True)
-all_stocks['adj_close_lag1']=all_stocks[['Symbol','Date','Adj Close']].groupby(['Symbol']).shift(1)['Adj Close'].reset_index(drop=True)
-all_stocks['return']=np.log(all_stocks['Adj Close']/all_stocks['adj_close_lag1'])
+all_stocks=all_stocks.sort_values(['Symbol','Date']).reset_index(drop=True);
+all_stocks['adj_close_lag1']=all_stocks[['Symbol','Date','Adj Close']].groupby(['Symbol']).shift(1)['Adj Close'].reset_index(drop=True);
+all_stocks['return']=np.log(all_stocks['Adj Close']/all_stocks['adj_close_lag1']);
 
-"""### Think about how to use the other features - DO NOT USE FEATURES FROM TODAY TO MODEL TODAY'S RETURN"""
-
-all_stocks
 
 def create_lagged_features(df,var):
     df[var+'_lag1']=df[['Symbol','Date',var]].groupby(['Symbol']).shift(1)[var].reset_index(drop=True)
@@ -55,31 +35,21 @@ def create_lagged_features(df,var):
     return df
 
 all_stocks=create_lagged_features(all_stocks,'return')
-all_stocks
 
 all_stocks=create_lagged_features(all_stocks,'Volume')
-all_stocks
 
 all_stocks['relative_vol_1_15']=all_stocks['Volume_lag1']/all_stocks['Volume_rolling15']
 all_stocks['relative_vol_5_15']=all_stocks['Volume_rolling5']/all_stocks['Volume_rolling15']
 
 all_stocks=create_lagged_features(all_stocks,'Open')
-all_stocks.head(10)
-
-all_stocks.columns
-
-"""### Transform Sector for modeling"""
 
 sector_counts=all_stocks['Sector'].value_counts()
-sector_counts
 
 #perform frequency based encoding (usually this would only use training porttion to fit transform, but need to keep transform constant across days)
 from sklearn.preprocessing import OrdinalEncoder
 enc = OrdinalEncoder(categories=[list(sector_counts.index)])
 
 all_stocks['Sector_enc']=enc.fit_transform(all_stocks[['Sector']])
-
-"""### Let's pick a stock to see what might be driving returns for that stock based on modeling the market"""
 
 import shap
 import xgboost as xgb
@@ -93,14 +63,14 @@ last10days=[]
 
 for i in range(3,13):
   last10days.append(all_stocks.loc[all_stocks.index[-i],'Date'])
-print(last10days)
+
 
 """## DAY -1"""
 
 feature_list=['Sector_enc','return_lag1','return_lag2','return_rolling5','return_rolling15','relative_vol_1_15','relative_vol_5_15','Open_lag1','Open_lag2', 'Open_rolling5',
        'Open_rolling15']
 this_date=last10days[0]
-print(this_date)
+print(this_date,this_stock)
 
 #create a list of today's stocks EXCLUDING the one we are interested in
 today_stocks=all_stocks[np.logical_and(all_stocks['Date']==this_date,all_stocks['Symbol']!=this_stock)]
@@ -116,28 +86,21 @@ gbm = xgb.XGBRegressor(colsample_bylevel=1, colsample_bynode=1, colsample_bytree
              silent=None, subsample=.5, verbosity=1)
 
 search = GridSearchCV(gbm,param_grid=param_grid, verbose=1)
-search.fit(X_train,y_train,**params_fit)
-print("Best parameter (CV score=%0.3f):" % search.best_score_)
-print(search.best_params_)
-
-#best model was max depth 3 and we have that estimator fit on whole training data (excluding the early stopping piece)
-search.best_estimator_
-
-search.best_estimator_.feature_importances_
+search.fit(X_train,y_train,**params_fit);
 
 #input for only this stock
 this_data=all_stocks[np.logical_and(all_stocks['Date']==this_date,all_stocks['Symbol']==this_stock)][feature_list]
 this_actual=all_stocks[np.logical_and(all_stocks['Date']==this_date,all_stocks['Symbol']==this_stock)]['return']
-search.best_estimator_.predict(this_data), this_actual
+search.best_estimator_.predict(this_data), this_actual;
 
-explainer = shap.TreeExplainer(search.best_estimator_)
-shap_values = explainer.shap_values(this_data)
+
 
 # visualize the prediction's explanation
 
 import shap
 import streamlit as st
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
 
 @st.cache
 def load_data():
@@ -149,14 +112,17 @@ def st_shap(plot, height=None):
 
 st.title("SHAP in Streamlit")
 
+explainer = shap.TreeExplainer(search.best_estimator_)
+shap_values = explainer.shap_values(this_data)
+
 
 # visualize the first prediction's explanation (use matplotlib=True to avoid Javascript)
-shap.initjs()
 st_shap(shap.force_plot(explainer.expected_value, shap_values[0,:], X_test.iloc[0]))
-
+#st.bar_chart(chart_data)
 
 
 #the baseline value
-explainer.expected_value
+explainer.expected_value;
 
-shap_values
+shap_values;
+
