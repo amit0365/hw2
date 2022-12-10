@@ -117,7 +117,7 @@ shap_values = explainer.shap_values(this_data)
 
 
 # visualize the first prediction's explanation (use matplotlib=True to avoid Javascript)
-st_shap(shap.force_plot(explainer.expected_value, shap_values[0,:], X_test.iloc[0]))
+st_shap(shap.force_plot(explainer.expected_value, shap_values[0,:], X_test.iloc[0]),500)
 #st.bar_chart(chart_data)
 
 
